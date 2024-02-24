@@ -3,10 +3,10 @@ network:
   ethernets:
     eno6:
       addresses:
-        -  10.129.64.26/28
+        -  x.x.x.x/x
       routes:
         - to: default
-          via: 10.129.64.17
+          via: x.x.x.x
       nameservers:
         addresses: [10.131.168.16]
       emit-lldp: true
