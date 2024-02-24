@@ -1,13 +1,5 @@
 #!/bin/bash
 cd $(dirname $0)
-echo "Please insert the Velocloud Edge activation code:"
-read ACTIVATION_CODE
-regex='[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}'
-if ! [[ $ACTIVATION_CODE =~ $regex ]] ;
-then
-  echo "Invalid activation code, must match $regex"
-  exit 1
-fi
 SERIALNO=$(dmidecode -s system-serial-number)
 echo "instance-id: vce-$SERIALNO
 local-hostname: vce-$SERIALNO
