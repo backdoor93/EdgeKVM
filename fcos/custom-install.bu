@@ -1,0 +1,223 @@
+variant: fcos
+version: 1.4.0
+storage:
+    files:
+        - path: /etc/sysconfig/teleport
+          overwrite: true
+          mode: 0600
+          contents:
+              local: teleport.sysconfig
+        - path: /etc/sysconfig/add-layered-packages-kargs
+          overwrite: true
+          contents:
+              local: add-layered-packages-kargs.sysconfig
+        - path: /etc/sysconfig/container-libvirtd
+          overwrite: true
+          contents:
+              local: container-libvirtd.sysconfig
+        - path: /etc/ssh/sshd_config.d/20-enable-passwords.conf
+          mode: 0644
+          contents:
+              inline: |
+                # Fedora CoreOS disables SSH password login by default.
+                # Enable it.
+                # This file must sort before 40-disable-passwords.conf.
+                PasswordAuthentication yes
+        - path: /etc/zincati/config.d/90-server-settings.toml
+          overwrite: true
+          contents:
+              local: zincati-server-settings.toml
+        - path: /etc/zincati/config.d/90-local-settings.toml
+          overwrite: true
+          contents:
+              local: zincati-local-settings.toml
+        - path: /etc/sysctl.d/20-silence-audit.conf
+          overwrite: true
+          contents:
+            inline: |
+              # Raise console message logging level from DEBUG (7) to WARNING (4)
+              # so that audit messages don't get interspersed on the console that
+              # may frustrate a user trying to interactively log in.
+              # See https://github.com/systemd/systemd/issues/15324
+              # See https://github.com/coreos/fedora-coreos-tracker/issues/220#issuecomment-645025878
+              kernel.printk=4
+        - path: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          mode: 0755
+          contents:
+              inline: |
+                #!/bin/sh
+                exec /usr/bin/podman exec -it container-libvirtd /usr/bin/$(basename $0) "$@"
+    links:
+        - path: /usr/local/bin/virsh
+          target: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          hard: false
+        - path: /usr/local/bin/virt-install
+          target: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          hard: false
+        - path: /usr/local/bin/virt-clone
+          target: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          hard: false
+        - path: /usr/local/bin/virt-xml
+          target: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          hard: false
+        - path: /usr/local/bin/virt-xml-validate
+          target: /usr/local/bin/container-libvirt-wrapper
+          overwrite: true
+          hard: false
+systemd:
+  units:
+    - name: ctrl-alt-del.target
+      mask: true
+    - name: rpm-ostree-countme.timer
+      enabled: false
+      mask: true
+    - name: docker.socket
+      enabled: false
+    - name: docker.service
+      mask: true
+    - name: podman.socket
+      enabled: true
+    - name: var-lib-libvirt.mount
+      enabled: true
+    - name: var-lib-containers.mount
+      enabled: true
+    - name: install-teleport.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install Teleport
+        # We run after `systemd-machine-id-commit.service` to ensure that
+        # `ConditionFirstBoot=true` services won't rerun on the next boot.
+        After=systemd-machine-id-commit.service
+        After=network-online.target
+        Requires=network-online.target
+        # Run before layer addition reboots the system
+        Before=systemd-user-sessions.service add-layered-packages.service
+        # Do not execute anymore if it was already installed
+        ConditionPathExists=!/var/lib/%N.stamp
+        
+        [Service]
+        Type=oneshot
+        EnvironmentFile=/etc/sysconfig/teleport
+        ExecStartPre=/usr/bin/bash -c 'echo "${TELEPORT_INSTALLER_HASH} /usr/local/src/teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz" > /usr/local/src/SHA256SUM'
+        ExecStartPre=/usr/bin/curl -C - -o /usr/local/src/teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz https://get.gravitational.com/teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz
+        ExecStartPre=/usr/bin/sha256sum -c /usr/local/src/SHA256SUM
+        ExecStartPre=/usr/bin/tar -C /usr/local/src -xzf /usr/local/src/teleport-v${TELEPORT_VERSION}-linux-amd64-bin.tar.gz
+        ExecStart=/usr/local/src/teleport/install
+        ExecStartPost=/usr/local/bin/teleport configure -o file
+        ExecStartPost=/usr/bin/sed -i -e '/enabled:/s/yes/no/g' -e '/^ssh_service:/,/^proxy_service:/s/no/yes/' -e '/ca_pin:/s/""/"${TELEPORT_CA_PIN}"/' -e '/nodename:/s/:.*\x24/: ${TELEPORT_NODE_NAME}/' -e 's/^\x5c(\x5c(\x5cs*\x5c)data_dir:.*\x5c)\x24/\x5c1\x5cn\x5c2auth_token: ${TELEPORT_JOIN_TOKEN}\x5cn\x5c2auth_servers:\x5cn\x5c2\x5c2- ${TELEPORT_AUTH_SERVER}/' /etc/teleport.yaml
+        ExecStartPost=/usr/bin/systemctl --now enable teleport.service
+        ExecStartPost=/usr/bin/touch /var/lib/%N.stamp
+        
+        [Install]
+        WantedBy=multi-user.target
+    - name: add-layered-packages-kargs.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Add and activate an RPM-OStree layer with additional required packages and kargs
+        # We run after `systemd-machine-id-commit.service` to ensure that
+        # `ConditionFirstBoot=true` services won't rerun on the next boot.
+        After=systemd-machine-id-commit.service
+        After=network-online.target
+        Requires=network-online.target
+        # We run before `zincati.service` to avoid conflicting rpm-ostree
+        # transactions.
+        Before=zincati.service
+        # Run before remote login is possible
+        Before=sshd.service
+        # Do not execute anymore if it was already installed
+        ConditionPathExists=!/var/lib/%N.stamp
+        
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        EnvironmentFile=/etc/sysconfig/add-layered-packages-kargs
+        ExecStart=/usr/bin/bash -c '/usr/bin/test -n "$RPM_PACKAGES" && /usr/bin/rpm-ostree install --idempotent $RPM_PACKAGES'
+        ExecStart=/usr/bin/bash -c 'for karg in $ADDITIONAL_KARGS; do /usr/bin/rpm-ostree kargs --append="$$karg"; done'
+        ExecStartPost=/usr/bin/touch /var/lib/%N.stamp
+        ExecStartPost=/usr/bin/systemctl --no-block reboot
+        
+        [Install]
+        # Run before remote login is possible
+        RequiredBy=sshd.target
+        WantedBy=multi-user.target
+    - name: teleport.service
+      enabled: false
+      contents: |
+        [Unit]
+        Description=Teleport Service
+        After=network-online.target
+        Requires=network-online.target
+        
+        [Service]
+        Type=simple
+        Restart=on-failure
+        EnvironmentFile=/etc/sysconfig/teleport
+        ExecStart=/usr/local/bin/teleport start --pid-file=/run/teleport.pid
+        ExecReload=/bin/kill -HUP $MAINPID
+        PIDFile=/run/teleport.pid
+        LimitNOFILE=8192
+        
+        [Install]
+        WantedBy=multi-user.target
+    - name: container-libvirtd.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Libvirt container
+        After=network-online.target var-lib-libvirt.mount
+        Requires=network-online.target var-lib-libvirt.mount
+
+        [Service]
+        Type=forking
+        PIDFile=/run/container-libvirtd.pid
+        KillMode=none
+        Restart=always
+        RestartSec=10
+        TimeoutStartSec=infinity
+        EnvironmentFile=/etc/sysconfig/container-libvirtd
+        ExecStartPre=/usr/bin/mkdir -p /etc/qemu /etc/libvirt /run/libvirt /var/lib/libvirt /var/log/libvirt
+        ExecStartPre=-/usr/sbin/groupadd -g 36 -r kvm
+        ExecStartPre=-/usr/sbin/groupadd -g 107 -r qemu
+        # TODO: adding "-G kvm" here does not work - workaround below
+        ExecStartPre=-/usr/sbin/useradd -r -u 107 -g qemu -d / -s /sbin/nologin -c "Qemu user" qemu
+        # TODO: the following does not work - workaround below
+        #ExecStartPre=-/usr/sbin/usermod -a -G kvm qemu
+        # TODO: error on the additional sed expression '\x24akvm:x:36:qemu' - workaround below
+        ExecStartPre=-/usr/bin/sed -i -e '/^kvm:/d' /etc/group
+        ExecStartPre=-/usr/bin/bash -c 'echo "kvm:x:36:qemu" >> /etc/group'
+        ExecStartPre=-/usr/sbin/groupadd -r libvirt
+        ExecStartPre=-/usr/bin/podman kill container-libvirtd
+        ExecStartPre=-/usr/bin/podman rm container-libvirtd
+        ExecStartPre=-/usr/bin/podman pull ${CONTAINER_LIBVIRTD_IMAGE}:${CONTAINER_LIBVIRTD_IMAGE_TAG}
+        ExecStart=/usr/bin/podman run -d --name container-libvirtd --rm --privileged --pid=host --net=host --security-opt label=disable --log-driver journald --conmon-pidfile /run/container-libvirtd.pid -v /usr/lib/passwd:/usr/lib/passwd:ro -v /usr/lib/group:/usr/lib/group:ro -v /dev/kvm:/dev/kvm -v /dev/net:/dev/net -v /etc/group:/etc/group:ro -v /etc/qemu:/etc/qemu -v /etc/libvirt:/etc/libvirt -v /etc/nsswitch.conf:/etc/nsswitch.conf:ro -v /etc/passwd:/etc/passwd:ro -v /lib/modules:/lib/modules:ro -v /run/dbus:/run/dbus -v /run/libvirt:/run/libvirt -v /sys/fs/cgroup:/sys/fs/cgroup -v /var/log/libvirt:/var/log/libvirt -v /var/lib/libvirt:/var/lib/libvirt ${CONTAINER_LIBVIRTD_IMAGE}:${CONTAINER_LIBVIRTD_IMAGE_TAG} container_libvirtd
+        ExecStop=/usr/bin/podman stop -t 10 container-libvirtd
+        ExecStopPost=-/usr/bin/podman rm -f container-libvirtd
+
+        [Install]
+        WantedBy=multi-user.target
+        Alias=libvirtd.service
+passwd:
+  users:
+    - name: system
+      gecos: Centralized Administration Account
+      groups:
+          - sudo
+          - wheel
+      ssh_authorized_keys:
+          - ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBABuG9cJmQajdDokyk0C/v2bla9Z5TPJTBU0iLVQMyyUbvP+NHb0TKN3Mwex+M0bPA+LVEbgj+6gWw+yf/8CR3p3hACiiEu4qgFihXJdP69DBCv2zU/noDj6xN08m3+P9iwK/YdxQ4q2EpAqVX7B+r1sYypttXrUF64R0vLXoz6+WtQOdQ== root@twilight.mgmt.private
+      password_hash: "$6$9KNiJU4z0CxJ1x4B$OSBoCy.1BEt54IpfHP78M1W24g9oMQf5uDWnnEBtyAT0mRDh3TiermE5ymOswlWVvrxqCDHvjOgphupLVTiVT/"
+    - name: localadmin
+      gecos: Local Administration Account
+      groups:
+          - sudo
+          - wheel
+      ssh_authorized_keys:
+          - ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBABuG9cJmQajdDokyk0C/v2bla9Z5TPJTBU0iLVQMyyUbvP+NHb0TKN3Mwex+M0bPA+LVEbgj+6gWw+yf/8CR3p3hACiiEu4qgFihXJdP69DBCv2zU/noDj6xN08m3+P9iwK/YdxQ4q2EpAqVX7B+r1sYypttXrUF64R0vLXoz6+WtQOdQ== root@twilight.mgmt.private
+      password_hash: "$6$9KNiJU4z0CxJ1x4B$OSBoCy.1BEt54IpfHP78M1W24g9oMQf5uDWnnEBtyAT0mRDh3TiermE5ymOswlWVvrxqCDHvjOgphupLVTiVT/"

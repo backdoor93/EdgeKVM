@@ -1,0 +1,7 @@
+[connection]
+id=breno8
+type=bridge
+interface-name=breno8
+[ethernet]
+mtu=9000
+[bridge]

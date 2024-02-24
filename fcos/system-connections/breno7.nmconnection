@@ -1,0 +1,5 @@
+[connection]
+id=breno7
+type=bridge
+interface-name=breno7
+[bridge]

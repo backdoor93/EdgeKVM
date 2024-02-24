@@ -1,0 +1,7 @@
+[connection]
+id=brhavce
+type=bridge
+interface-name=brhavce
+[ethernet]
+mtu=9000
+[bridge]

@@ -1,0 +1,107 @@
+<?xml version="1.0"?>
+<domain type="kvm">
+  <name>ubuntu</name>
+  <memory unit="KiB">4194304</memory>
+  <currentMemory unit="KiB">4194304</currentMemory>
+  <vcpu placement="static">2</vcpu>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os>
+    <type arch="x86_64" machine="pc-i440fx-trusty">hvm</type>
+    <boot dev="hd"/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+  </features>
+  <!--
+Set the CPU mode to host model to leverage all the available features on the host CPU 
+-->
+  <cpu mode="host-model">
+    <model fallback="allow"/>
+  </cpu>
+  <clock offset="utc"/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/bin/kvm-spice</emulator>
+    <!-- 
+ Below is the location of the qcow2 disk image 
+ -->
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2"/>
+      <source file="/var/lib/libvirt/images/jammy-server-cloudimg-amd64-disk-kvm.img"/>
+      <target dev="sda" bus="sata"/>
+      <address type="drive" controller="0" bus="0" target="0" unit="0"/>
+    </disk>
+    <!-- 
+ If using cloud-init to boot up virtual edge, attach the 2nd disk as CD-ROM 
+ -->
+      <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/var/lib/libvirt/images/cloud-init-vedge.iso"/>
+      <target dev="sdb" bus="sata"/>
+      <readonly/>
+      <address type="drive" controller="1" bus="0" target="0" unit="0"/>
+      </disk>
+    <controller type="usb" index="0">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x01" function="0x2"/>
+    </controller>
+    <controller type="pci" index="0" model="pci-root"/>
+    <controller type="sata" index="0">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x05" function="0x0"/>
+    </controller>
+    <controller type="ide" index="0">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x01" function="0x1"/>
+    </controller>
+    <!-- 
+ The first two interfaces are for the default L2 interfaces, NOTE VLAN support just for SR-IOV and OpenvSwitch  
+ -->
+    <interface type="network">
+      <model type="virtio"/>
+      <source network="vceHA"/>
+      <alias name="GE1"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x12" function="0x0"/>
+    </interface>
+    <interface type="network">
+      <model type="virtio"/>
+      <source network="default"/>
+      <alias name="GE2"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x13" function="0x0"/>
+    </interface>
+    <!--
+ The next two interfaces are for the default L3 interfaces. Note that additional 6 routed interfaces 
+are supported for a combination of 8 interfaces total  
+ -->
+    <interface type="network">
+      <model type="virtio"/>
+      <source network="GE3"/>
+      <alias name="GE3"/>
+      <vlan>
+        <tag id="0"/>
+      </vlan>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x14" function="0x0"/>
+    </interface>
+    <serial type="pty">
+      <target port="0"/>
+    </serial>
+    <console type="pty">
+      <target type="serial" port="0"/>
+    </console>
+    <input type="mouse" bus="ps2"/>
+    <input type="keyboard" bus="ps2"/>
+    <graphics type="vnc" port="-1" autoport="yes" listen="127.0.0.1">
+      <listen type="address" address="127.0.0.1"/>
+    </graphics>
+    <video>
+      <model type="cirrus" vram="9216" heads="1"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x02" function="0x0"/>
+    </video>
+    <memballoon model="virtio">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x06" function="0x0"/>
+    </memballoon>
+  </devices>
+</domain>

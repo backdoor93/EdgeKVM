@@ -1,0 +1,130 @@
+#cloud-config
+autoinstall:
+  version: 1
+  apt:
+    geoip: true
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64, i386]
+        uri: http://archive.ubuntu.com/ubuntu
+      - arches: [default]
+        uri: http://ports.ubuntu.com/ubuntu-ports 
+  identity:
+    hostname: ucpe
+    password: $6$rI8HKc2mK05onb9A$Kf43hOTN9NVQ6j1ZJM1ODC6ByC1MjgPsssO7g07qoWjUV0ITB2VOJENjcfMcKsM9r817vF.MvztjZBi5ZSaIH/
+    realname: system
+    username: system
+  keyboard: { layout: it, toggle: null, variant: "" }
+  locale: en_US
+  network:
+    version: 2
+    ethernets:
+      eno1:
+        dhcp4: true
+  ssh:
+    allow-pw: true
+    authorized-keys: []
+    install-server: true
+  storage:
+    config:
+      - {
+          ptable: gpt,
+          path: /dev/mmcblk0,
+          wipe: superblock-recursive,
+          preserve: false,
+          name: "",
+          grub_device: false,
+          type: disk,
+          id: disk-mmcblk0,
+        }
+      - {
+          device: disk-mmcblk0,
+          size: 536870912,
+          wipe: superblock,
+          flag: boot,
+          number: 1,
+          preserve: false,
+          grub_device: true,
+          type: partition,
+          id: partition-0,
+        }
+      - {
+          fstype: fat32,
+          volume: partition-0,
+          preserve: false,
+          type: format,
+          id: format-0,
+        }
+      - {
+          device: disk-mmcblk0,
+          size: -1,
+          wipe: superblock,
+          flag: "",
+          number: 2,
+          preserve: false,
+          grub_device: false,
+          type: partition,
+          id: partition-1,
+        }
+      - {
+          fstype: ext4,
+          volume: partition-1,
+          preserve: false,
+          type: format,
+          id: format-1,
+        }
+      - { device: format-1, path: /, type: mount, id: mount-1 }
+      - { device: format-0, path: /boot/efi, type: mount, id: mount-0 }
+      - {
+          ptable: gpt,
+          path: /dev/sda,
+          wipe: superblock-recursive,
+          preserve: false,
+          name: "",
+          grub_device: false,
+          type: disk,
+          id: disk-data,
+        }
+  packages:
+    - cpu-checker
+    - qemu-kvm
+    - libvirt-daemon-system
+    - zfsutils-linux
+    - libvirt-daemon-driver-storage-zfs
+    - genisoimage
+  early-commands:
+    - HOSTNAME=ucpe-$(dmidecode -s system-serial-number) && sed -i "s/ucpe/$HOSTNAME/" /autoinstall.yaml
+  late-commands:
+    - curtin in-target --target=/target -- update-alternatives --set editor /usr/bin/vim.basic
+    ## Setup ZFS for KVM
+    - curtin in-target --target=/target -- zpool create -O dedup=on -O compression=on data /dev/sda
+    - curtin in-target --target=/target -- zfs create -o mountpoint=/var/lib/libvirt/images data/libvirt-images
+    ## Enable passwordless sudo for 'system' user
+    - echo 'system ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/system
+    ## Enable IOMMU and blacklist wifi card for VFIO
+    - sed -i -Ee 's/GRUB_CMDLINE_LINUX_DEFAULT="?([^"]*)"?$/GRUB_CMDLINE_LINUX_DEFAULT="\1 intel_iommu=on vfio-pci.ids=168c:003c"/' /target/etc/default/grub
+    - curtin in-target --target=/target -- update-grub
+    ## Copy varius files to the target system
+    - cp -p /cdrom/libvirt-images/*qcow2* /target/var/lib/libvirt/images/
+    - cp -pr /cdrom/libvirt /target/root/
+    ## Manually configure the network of the installed system
+    ## workaround for a bug of the installer causing failure in installing packages wen many network card are configured
+    - cp -p /cdrom/files/00-installer-config.yaml /target/etc/netplan/00-installer-config.yaml
+    ## Firewall activation
+    - sed -i -Ee 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /target/etc/default/ufw
+    #- sed -i -Ee 's/ENABLED=no/ENABLED=yes/' /target/etc/ufw/ufw.conf ## Only if mgmt system active
+    ## Adapt apparmor profile for VFIO devices
+    - sed -i -Ee 's#/dev/vfio/vfio rw,#/dev/vfio/* rw,#' /target/etc/apparmor.d/abstractions/libvirt-qemu
+    ## Copy to root's home the script to connect to the peer device
+    - cp -p /cdrom/files/connect2peer.sh /target/root/connect2peer.sh
+    ## Copy to root's home the teleport configuration script
+    - cp -p /cdrom/files/teleport_config.sh /target/root/teleport_config.sh
+  user-data:
+    runcmd:
+      - [ ls, -l, / ]
+      ## Allow 'system' user to manage libvirt, cannot be in curtin since the user doesn't exist yet
+      - usermod -a -G kvm,libvirt system
+      ## configure Teleport
+      #- /target/root/teleport_config.sh
+      ## Install & start Teleport
+      #- apt-get install teleport && systemctl enable teleport --now

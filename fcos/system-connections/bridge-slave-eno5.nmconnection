@@ -1,0 +1,17 @@
+[connection]
+id=bridge-slave-eno5
+type=ethernet
+interface-name=eno5
+lldp=true
+master=breno5
+slave-type=bridge
+[device]
+match-device=interface-name:eno5
+sriov-num-vfs=4
+[bridge-port]
+[ipv4]
+may-fail=true
+method=disabled
+[ipv6]
+may-fail=true
+method=disabled

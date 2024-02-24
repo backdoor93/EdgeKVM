@@ -1,0 +1,10 @@
+# TODO: provide an actual private Cincinnati service
+[cincinnati]
+base_url = "https://cincinnati.server.intranet/cincinnati/"
+
+[updates]
+strategy = "fleet_lock"
+
+# TODO: provide an actual private FleetLock service
+[updates.fleet_lock]
+base_url = "https://lock.server.intranet/fleet_lock/"

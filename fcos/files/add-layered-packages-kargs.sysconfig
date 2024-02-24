@@ -1,0 +1,8 @@
+# Install at least python3 python3-libselinux so that Ansible can manage this machine
+# Install at least cockpit-system cockpit-ostree cockpit-podman so that Cockpit can run from a central management host
+# Note: cockpit-machines has limitations in managing VMs on remote hosts, furthermore it does not support a containerized libvirt
+# Install dmidecode genisoimage so that the vce-deploy.sh script can run
+RPM_PACKAGES="python3 libselinux-python3 cockpit-system cockpit-ostree cockpit-podman cockpit-networkmanager dmidecode genisoimage"
+# Add the following kernel commandline arguments
+# TODO: add support for removing/modifying kernel commandline arguments
+ADDITIONAL_KARGS="intel_iommu=on vfio-pci.ids=168c:003c"

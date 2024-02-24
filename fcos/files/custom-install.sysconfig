@@ -1,0 +1,10 @@
+IGN_PLATFORM="metal"
+IGN_TARGET_DISK="/dev/mmcblk0"
+IGN_EXTRA_DISK="/dev/sda"
+# One of part, lvm or btrfs with part and lvm being both xfs-based
+IGN_EXTRA_DISK_STRATEGY="lvm"
+# Note: always specify either a size unit (like in "100G") or a percentage (like in "90%FREE")
+IGN_LIBVIRT_FS_SIZE="50%VG"
+IGN_CONTAINERS_FS_SIZE="30%VG"
+IGN_HOSTNAME_PREFIX="ucpe"
+IGN_TIMEZONE="Europe/Rome"

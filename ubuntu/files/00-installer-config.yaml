@@ -1,0 +1,18 @@
+# This is the network config written by 'subiquity'
+network:
+  ethernets:
+    eno6:
+      addresses:
+        -  10.129.64.26/28
+      routes:
+        - to: default
+          via: 10.129.64.17
+      nameservers:
+        addresses: [10.131.168.16]
+      emit-lldp: true
+      optional: true
+  bridges:
+    brha:
+      interfaces: [  ]
+      optional: true
+  version: 2

@@ -1,0 +1,14 @@
+[connection]
+id=bridge-slave-eno2
+type=ethernet
+interface-name=eno2
+lldp=true
+master=breno2
+slave-type=bridge
+[device]
+match-device=interface-name:eno2
+sriov-num-vfs=4
+[bridge-port]
+[ipv4]
+may-fail=true
+method=auto

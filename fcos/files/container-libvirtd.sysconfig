@@ -1,0 +1,2 @@
+CONTAINER_LIBVIRTD_IMAGE="quay.io/rhjhunt/fedora-libvirt"
+CONTAINER_LIBVIRTD_IMAGE_TAG="latest"
