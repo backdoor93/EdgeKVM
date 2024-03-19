@@ -1,1 +1,10 @@
-
+<vm-initcfg> 
+<hostname>VM_ABC_Company</hostname> 
+<ip-address>10.5.132.162</ip-address> 
+<netmask>255.255.254.0</netmask> 
+<default-gateway>10.5.132.1</default-gateway> 
+<dns-primary>10.44.2.10</dns-primary> 
+<dns-secondary>8.8.8.8</dns-secondary> 
+<panorama-server-primary>10.5.133.4</panorama-server-primary> 
+<panorama-server-secondary>10.5.133.5</panorama-server-secondary> 
+</vm-initcfg> 
